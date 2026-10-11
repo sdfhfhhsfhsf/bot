@@ -1,16 +1,17 @@
 const { Telegraf, Markup } = require('telegraf');
 
-// توکن ربات خود را از BotFather بگیرید و اینجا قرار دهید یا به صورت متغیر محیطی تنظیم کنید
-const bot = new Telegraf(process.env.BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE');
+// توکن ربات شما
+const bot = new Telegraf('8962912235:AAG9tH-UH7y2YUA_fxWBtfwupo7_nwLwN-o', {
+    handlerTimeout: 90000
+});
 
-// پایگاه داده موقت در حافظه (برای پایداری بیشتر در ریلویت می‌توانید از SQLite یا MongoDB استفاده کنید)
-// ساختار: db.channels[channelUsername] = { ownerId, title }
+// پایگاه داده موقت برای کانال‌ها
 const db = {
     channels: {},
-    registering: new Set() // کاربرانی که در مرحله ارسال آیدی کانال هستند
+    registering: new Set()
 };
 
-// منوی اصلی با کیبورد شیشه‌ای (Inline Keyboard)
+// منوی اصلی با دکمه‌های شیشه‌ای روی صفحه
 const mainMenu = Markup.inlineKeyboard([
     [Markup.button.callback('📌 ثبت کانال', 'register_channel')],
     [Markup.button.callback('📋 کانال‌های من', 'my_channels')],
@@ -29,17 +30,18 @@ bot.start((ctx) => {
     );
 });
 
-// مدیریت کلیک دکمه‌ها
+// ثبت کانال
 bot.action('register_channel', async (ctx) => {
     db.registering.add(ctx.from.id);
     await ctx.editMessageText(
-        '۱. ابتدا ربات را **ادمین** کانال خود کنید.\n۲. سپس یوزرنیم کانال خود را به طور مثال `@batman179` بفرستید.',
+        '۱. ابتدا ربات را **مدیر (Admin)** کانال خود کنید (با دسترسی کامل).\n۲. سپس اینجا یوزرنیم کانالتون رو به طور مثال `@batman179` بفرستید.',
         Markup.inlineKeyboard([
             [Markup.button.callback('🔙 بازگشت', 'back_to_home')]
         ])
     );
 });
 
+// لیست کانال‌های من
 bot.action('my_channels', async (ctx) => {
     const userId = ctx.from.id;
     const userChannels = Object.entries(db.channels).filter(([_, data]) => data.ownerId === userId);
@@ -53,27 +55,30 @@ bot.action('my_channels', async (ctx) => {
         );
     }
 
-    let buttons = userChannels.map(([username, data]) => [
+    let buttons = userChannels.map(([username]) => [
         Markup.button.callback(`❌ حذف ${username}`, `del_${username}`)
     ]);
     buttons.push([Markup.button.callback('🔙 بازگشت', 'back_to_home')]);
 
     await ctx.editMessageText(
-        'لیست کانال‌های ثبت شده شما:\nبرای حذف هر کدام روی دکمه مربوطه بزنید:',
+        'لیست کانال‌های ثبت شده شما:\nبرای حذف هر کدام روی گزینه حذف بزنید:',
         Markup.inlineKeyboard(buttons)
     );
 });
 
+// اطلاعات سازنده (آیدی)
 bot.action('creator_id', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply('آیدی سازنده ربات:\n@batman1792');
 });
 
+// اطلاعات سازنده (کانال)
 bot.action('creator_channel', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply('کانال سازنده ربات:\n@batman179');
 });
 
+// بازگشت به منوی اصلی
 bot.action('back_to_home', async (ctx) => {
     db.registering.delete(ctx.from.id);
     await ctx.editMessageText(
@@ -89,7 +94,7 @@ bot.action(/del_(.+)/, async (ctx) => {
         delete db.channels[username];
         await ctx.answerCbQuery('کانال با موفقیت حذف شد.');
     }
-    // بروزرسانی لیست
+    
     const userId = ctx.from.id;
     const userChannels = Object.entries(db.channels).filter(([_, data]) => data.ownerId === userId);
     
@@ -108,78 +113,85 @@ bot.action(/del_(.+)/, async (ctx) => {
     await ctx.editMessageText('لیست کانال‌های شما:', Markup.inlineKeyboard(buttons));
 });
 
-// دریافت متون ارسالی (برای ثبت کانال)
+// دریافت متون (برای ثبت آیدی کانال)
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text.trim();
 
     if (db.registering.has(userId)) {
         if (!text.startsWith('@')) {
-            return ctx.reply('فرمت اشتباه است! لطفاً یوزرنیم کانال را با @ بفرستید. مثال: @batman179');
+            return ctx.reply('فرمت اشتباه است! لطفاً یوزرنیم کانال را به طور مثال `@batman179` بفرستید.');
         }
 
         const channelUsername = text;
 
         try {
-            // بررسی اینکه آیا ربات در کانال ادمین است یا خیر
             const chatMember = await ctx.telegram.getChatMember(channelUsername, ctx.botInfo.id);
             if (chatMember.status !== 'administrator') {
-                return ctx.reply('❌ خطا! ربات هنوز در این کانال ادمین نیست. لطفاً ابتدا ربات را ادمین کنید و دوباره یوزرنیم را بفرستید.');
+                return ctx.reply('❌ خطا! ربات را مدیر کانال خود نکرده‌اید. لطفاً ابتدا ربات را ادمین کنید سپس یوزرنیم را بفرستید.');
             }
 
-            // ذخیره کانال
             db.channels[channelUsername] = {
-                ownerId: userId,
-                title: channelUsername
+                ownerId: userId
             };
 
             db.registering.delete(userId);
             await ctx.reply(
-                `✅ کانال ${channelUsername} با موفقیت ثبت شد و از این پس لف دادن کاربران رصد خواهد شد!`,
+                `✅ کانال ${channelUsername} با موفقیت ثبت شد! از این پس ترک کاربران اطلاع‌رسانی خواهد شد.`,
                 mainMenu
             );
         } catch (error) {
             console.error(error);
-            await ctx.reply('❌ خطا در دسترسی به کانال. مطمئن شوید که یوزرنیم را درست وارد کرده‌اید و ربات در کانال ادمین است.');
+            await ctx.reply('❌ خطا در دسترسی به کانال. مطمئن شوید یوزرنیم صحیح است و ربات در آن ادمین است.');
         }
     }
 });
 
-// رصد ترک کانال توسط کاربران
+// رصد لفت دادن (ترک کانال) با پشتیبانی از chat_member
 bot.on('chat_member', async (ctx) => {
-    const update = ctx.chatMember;
-    const chat = update.chat;
-    const oldStatus = update.old_chat_member.status;
-    const newStatus = update.new_chat_member.status;
-    const user = update.from;
+    try {
+        const update = ctx.chatMember;
+        if (!update) return;
 
-    // بررسی اینکه آیا کاربر کانال را ترک کرده است (left) یا از کانال اخراج شده (kicked)
-    const leftStatuses = ['left', 'kicked'];
-    const wasMember = ['member', 'administrator', 'creator'].includes(oldStatus);
-    const isNowLeft = leftStatuses.includes(newStatus);
+        const chat = update.chat;
+        const oldStatus = update.old_chat_member.status;
+        const newStatus = update.new_chat_member.status;
+        const user = update.from;
 
-    if (wasMember && isNowLeft && chat.username) {
-        const channelUsername = `@${chat.username}`;
-        const channelData = db.channels[channelUsername];
+        const leftStatuses = ['left', 'kicked'];
+        const wasMember = ['member', 'administrator', 'creator'].includes(oldStatus);
+        const isNowLeft = leftStatuses.includes(newStatus);
 
-        if (channelData) {
-            const ownerId = channelData.ownerId;
-            const message = `⚠️ کاربر [${user.first_name}](tg://user?id=${user.id}) با آیدی \`${user.id}\` از کانال ${channelUsername} خارج شد!`;
-            
-            try {
+        if (wasMember && isNowLeft && chat && chat.username) {
+            const channelUsername = `@${chat.username}`;
+            const channelData = db.channels[channelUsername];
+
+            if (channelData) {
+                const ownerId = channelData.ownerId;
+                const message = `کاربر ${user.first_name} با آیدی \`${user.id}\` از کانال شما (${channelUsername}) خارج شد!`;
+                
                 await bot.telegram.sendMessage(ownerId, message, { parse_mode: 'Markdown' });
-            } catch (err) {
-                console.error('خطا در ارسال پیام به مالک کانال:', err);
             }
         }
+    } catch (err) {
+        console.error('خطا در پردازش لفت دادن کاربر:', err);
     }
 });
 
-// راه‌اندازی ربات
-bot.launch().then(() => {
-    console.log('Bot is running...');
+// تنظیم وب‌هوک برای Railway
+const DOMAIN = 'bot-production-d226.up.railway.app';
+const PORT = process.env.PORT || 3000;
+const SECRET_PATH = '/webhook';
+
+bot.launch({
+    webhook: {
+        domain: DOMAIN,
+        port: PORT,
+        hookPath: SECRET_PATH
+    }
+}).then(() => {
+    console.log(`✅ Webhook set successfully & Bot is running on port ${PORT}`);
 });
 
-// بستن امن ربات
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
